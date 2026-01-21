@@ -1,0 +1,15 @@
+{
+  "name": "milvus-init",
+  "version": "1.0.0",
+  "description": "Milvus initialization script",
+  "type": "module",
+  "main": "init-milvus.js",
+  "scripts": {
+    "init": "node init-milvus.js",
+    "test:ingest": "node test-ingest.js",
+    "test:query": "node test-query.js"
+  },
+  "dependencies": {
+    "@zilliz/milvus2-sdk-node": "^2.6.3"
+  }
+}

@@ -1,0 +1,7 @@
+pymilvus
+langchain-text-splitters
+sentence-transformers
+PyPDF2
+python-dotenv
+anthropic
+openai

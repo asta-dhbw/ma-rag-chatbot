@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy scripts
+COPY init-milvus.js ./
+COPY milvus-handler.js ./
+COPY test-ingest.js ./
+COPY test-query.js ./
+
+CMD ["node", "init-milvus.js"]
