@@ -4,6 +4,8 @@ services:
       context: ./ollama
       dockerfile: Dockerfile
     container_name: ollama-server
+    profiles:
+      - ollama
     ports:
       - '127.0.0.1:11434:11434'
     environment:
