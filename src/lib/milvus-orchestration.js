@@ -227,18 +227,19 @@ export async function orchestrateMilvusHybridSearch(messages, options = {}) {
       chunkResults.results || []
     );
 
-    // Sort all results by similarity score (descending)
+    // Sort all results by similarity score (descending), filter below 60%, cap at 5
     structuredResults.sort((a, b) => b.score - a.score);
+    const filteredResults = structuredResults.filter(r => r.score >= 0.25).slice(0, 5);
 
     const assistantMessage = {
       role: 'assistant',
       content: '', // Empty content, will be replaced by structured data
       structured: {
         type: 'milvus_results',
-        results: structuredResults,
+        results: filteredResults,
         metadata: {
           query,
-          totalResults: structuredResults.length,
+          totalResults: filteredResults.length,
           pageCount: pageResults.results?.length || 0,
           chunkCount: chunkResults.results?.length || 0
         }

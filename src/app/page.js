@@ -2,33 +2,21 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/use-auth';
 
 export default function Page() {
   const router = useRouter();
+  const { isAuthenticated, isChecking } = useAuth({ redirectToLogin: false });
 
   useEffect(() => {
-    // Check authentication and redirect accordingly
-    const checkAuthAndRedirect = async () => {
-      try {
-        const response = await fetch('/api/auth/check');
-        const data = await response.json();
-
-        if (data.authenticated) {
-          // User is authenticated, redirect to chat
-          router.push('/chat');
-        } else {
-          // User is not authenticated, redirect to OAuth page
-          router.push('/oauth');
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        // On error, redirect to OAuth page
+    if (!isChecking) {
+      if (isAuthenticated) {
+        router.push('/chat');
+      } else {
         router.push('/oauth');
       }
-    };
-
-    checkAuthAndRedirect();
-  }, [router]);
+    }
+  }, [isAuthenticated, isChecking, router]);
 
   // Show a loading state while redirecting
   return (

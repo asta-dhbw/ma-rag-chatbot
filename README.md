@@ -1,340 +1,312 @@
-# Next.js + Milvus Vector Database + Ollama LLM
+# StuV-Copilot
 
-This is a [Next.js](https://nextjs.org) project with integrated Milvus vector database and Ollama LLM support for document-based Q&A.
+AI-powered document Q&A chatbot for DHBW students. Built with Next.js, Milvus vector database, and Claude/Ollama LLMs.
 
-## Prerequisites
+## Capabilities
 
-- Node.js (v18 or higher)
-- Docker & Docker Compose
-- Python 3.x (for PDF ingestion)
+- **Document Q&A**: Ask questions about ingested PDF documents
+- **Semantic Search**: Find relevant information using vector similarity search
+- **AI Summaries**: Automatic page-level summaries for quick navigation
+- **Dual Authentication**: Google OAuth (development) + Keycloak (production/DHBW SSO)
+- **Hybrid LLM Support**: Claude API (cloud) or Ollama (local)
+- **Google Drive Integration**: Access documents via MCP (Model Context Protocol)
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              AUTHENTICATION                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────┐              ┌──────────────────────────────────────┐    │
+│   │    User      │              │           Auth Providers              │    │
+│   │   Browser    │─────────────▶│  ┌────────────┐  ┌────────────────┐  │    │
+│   └──────────────┘              │  │   Google   │  │    Keycloak    │  │    │
+│          │                      │  │   OAuth    │  │   (DHBW SSO)   │  │    │
+│          │                      │  └────────────┘  └────────────────┘  │    │
+│          │                      └──────────────────────────────────────┘    │
+│          │                                    │                              │
+│          ▼                                    ▼                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              APPLICATION                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────┐      │
+│   │                      Next.js Frontend                             │      │
+│   │                     (Port 3000 / 80)                              │      │
+│   └──────────────────────────────────────────────────────────────────┘      │
+│          │                         │                         │               │
+│          ▼                         ▼                         ▼               │
+│   ┌────────────┐           ┌────────────┐           ┌────────────────┐      │
+│   │   Claude   │           │   Milvus   │           │  Google Drive  │      │
+│   │    API     │           │  (Vector)  │           │     (MCP)      │      │
+│   └────────────┘           └────────────┘           └────────────────┘      │
+│          │                         │                                         │
+│          │                         │                                         │
+│          ▼                         ▼                                         │
+│   ┌────────────┐           ┌────────────┐                                   │
+│   │   Ollama   │           │   MinIO    │                                   │
+│   │   (Local)  │           │  (Storage) │                                   │
+│   └────────────┘           └────────────┘                                   │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           PDF INGESTION PIPELINE                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐   │
+│   │    PDF     │────▶│   PyPDF2   │────▶│  Chunking  │────▶│ Embeddings │   │
+│   │   Files    │     │  (Extract) │     │ (1000char) │     │  (OpenAI/  │   │
+│   └────────────┘     └────────────┘     └────────────┘     │   Local)   │   │
+│                                                │           └────────────┘   │
+│                                                │                  │          │
+│                                                ▼                  ▼          │
+│                                         ┌────────────┐     ┌────────────┐   │
+│                                         │   Claude   │     │   Milvus   │   │
+│                                         │ (Summaries)│────▶│ (2 Colls)  │   │
+│                                         └────────────┘     └────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 
 ```
 .
-├── /milvus              # Vector database setup and JavaScript handlers
-├── /scripts-milvus      # Python PDF ingestion scripts
-├── /ollama              # Ollama LLM setup
-├── /src/app             # Next.js application
-│   └── /api/milvus      # Milvus API routes
-├── /src/lib             # Shared libraries and utilities
-├── .env                 # Environment configuration
-└── docker-compose.yml   # Docker services configuration
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── auth/              # Authentication endpoints
+│   │   │   │   ├── authorize/     # Google OAuth start
+│   │   │   │   ├── callback/      # Google OAuth callback
+│   │   │   │   ├── check/         # Google auth status
+│   │   │   │   └── keycloak/      # Keycloak OAuth endpoints
+│   │   │   │       ├── authorize/ # Keycloak OAuth start
+│   │   │   │       ├── callback/  # Keycloak OAuth callback
+│   │   │   │       └── check/     # Keycloak auth status
+│   │   │   ├── claude/            # Claude API endpoint
+│   │   │   ├── milvus/            # Milvus search endpoint
+│   │   │   └── ollama/            # Ollama LLM endpoint
+│   │   ├── chat/                  # Protected chat page
+│   │   └── oauth/                 # Login page
+│   ├── components/                # React components
+│   └── lib/                       # Shared utilities
+├── scripts-milvus/                # Python PDF ingestion (see scripts-milvus/README.md)
+├── milvus/                        # Milvus init scripts (see milvus/README.md)
+├── ollama/                        # Ollama Docker setup (see ollama/README.md)
+├── pdf/                           # PDF files for ingestion
+├── docker-compose.yml             # All Docker services
+└── .env                           # Environment configuration
 ```
 
-## Environment Configuration
+## Local Development Setup
 
-Create a `.env` file in the project root with the following variables:
+### Prerequisites
+
+- Node.js >= 20.0.0
+- Docker & Docker Compose
+- Python 3.x (for PDF ingestion)
+
+### Step 1: Clone & Install Dependencies
+
+```bash
+git clone <repository-url>
+cd mcp-js-example-testinggrounds
+npm install
+```
+
+### Step 2: Configure Environment
+
+Create `.env` in project root:
 
 ```env
-# Anthropic API Configuration (for PDF summaries)
-ANTHROPIC_API_KEY=your_api_key_here
+# =============================================================================
+# API KEYS
+# =============================================================================
+ANTHROPIC_API_KEY="sk-ant-..."        # Required for Claude (chat + summaries)
+OPENAI_API_KEY="sk-proj-..."          # Required for OpenAI embeddings
 
-# Local File Paths
-LOCAL_FILE_PATH="C:\\path\\to\\your\\data"
-PDF_DIR="./pdf"
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+# Auth providers: "google", "keycloak", or "google,keycloak" for both
+NEXT_PUBLIC_AUTH_PROVIDERS="google,keycloak"
 
-# Milvus Connection
+# Keycloak Configuration (for DHBW SSO)
+KEYCLOAK_CLIENT_ID="ma-website-chattest"
+KEYCLOAK_CLIENT_SECRET="your-secret-here"
+KEYCLOAK_ISSUER="https://keycloak.dhbw-asta.de/realms/de.dhbw.asta"
+
+# Base URL (change for production)
+NEXT_PUBLIC_BASE_URL="http://localhost:3000"
+
+# =============================================================================
+# MILVUS VECTOR DATABASE
+# =============================================================================
 MILVUS_HOST="localhost"
 MILVUS_PORT="19530"
-
-# Milvus Collections
 CHUNKS_COLLECTION_NAME="test"
 PAGES_COLLECTION_NAME="page_with_meta"
 
-# Embedding Configuration
-EMBEDDING_DIM=384  # all-MiniLM-L6-v2 dimension
+# =============================================================================
+# EMBEDDINGS
+# =============================================================================
+# Provider: "openai" (paid, 1536D) or "local" (free, 384D)
+EMBEDDING_PROVIDER="openai"
+EMBEDDING_MODEL="text-embedding-3-small"
+EMBEDDING_DIM=1536
+
+# =============================================================================
+# FILE PATHS
+# =============================================================================
+PDF_DIR="C:\\path\\to\\project\\pdf"
+LOCAL_FILE_PATH="C:\\path\\to\\project\\data"
 ```
 
-These are automatically loaded by both JavaScript and Python scripts.
-
-## Quick Start
-
-### 1. Start the Next.js Development Server
+### Step 3: Start Docker Services
 
 ```bash
-npm install
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-### 2. Start Milvus Vector Database
-
-**Start all services:**
-
-```bash
+# Start all services (Milvus + Ollama)
 docker-compose up -d
-```
 
-**Wait for services to be healthy (~30-60 seconds):**
-
-```bash
+# Wait for services to be healthy (~60 seconds)
 docker-compose ps
+
+# Check Milvus health
+curl http://localhost:9091/healthz
 ```
 
-**The `milvus-init` container runs automatically and:**
-- Creates two collections (`test` and `page_with_meta`)
-- Creates HNSW indexes on vector fields
-- Ingests test entities for verification
-- Validates both collections are ready
-
-For detailed Milvus documentation, see [`./milvus/README.md`](./milvus/README.md).
-
-## Milvus Vector Database
-
-### Dual-Collection Architecture
-
-The project uses **two Milvus collections** for efficient document storage:
-
-1. **Chunks Collection** (`test`)
-   - Stores document chunks with embeddings
-   - Used for detailed semantic search
-   - 1000-character chunks with 100-character overlap
-
-2. **Pages Collection** (`page_with_meta`)
-   - Stores page-level summaries with embeddings
-   - Used for high-level navigation
-   - AI-generated summaries (Claude)
-
-### Why Two Collections?
-
-- **Storage Efficiency**: Page summaries stored once, not duplicated across chunks
-- **Search Flexibility**: Query pages for overview, chunks for details
-- **Hybrid Search**: Find relevant pages first, then retrieve specific chunks
-
-### Collections Schema
-
-**Chunks Collection:**
-- chunk_id (primary key)
-- fileID, filename, file_hash
-- page (references page_id in pages collection)
-- chunk_index, chunk_text
-- location
-- chunk (384-dim vector)
-
-**Pages Collection:**
-- page_id (primary key)
-- file_id, local_page_num
-- summary (AI-generated)
-- summary_embedding (384-dim vector)
-
-## PDF Ingestion Pipeline
-
-Ingest PDF documents into both Milvus collections.
-
-### Prerequisites
-
-Install Python dependencies:
+### Step 4: Ingest PDFs (Optional)
 
 ```bash
-pip install pymilvus langchain-text-splitters sentence-transformers PyPDF2 python-dotenv anthropic
+# Place PDFs in ./pdf folder, then:
+cd scripts-milvus
+pip install -r requirements.txt
+python milvus-pdf.py
 ```
 
-### Usage
+See [`scripts-milvus/README.md`](./scripts-milvus/README.md) for details.
 
-1. Place PDF files in the `./pdf` directory
-2. Ensure Milvus is running (`docker-compose up -d`)
-3. Set `ANTHROPIC_API_KEY` in `.env` for summary generation
-4. Run the ingestion script:
+### Step 5: Configure Google OAuth (Development)
 
-```bash
-python scripts-milvus/milvus-pdf.py
-```
+1. Create `client_secret.json` in project root (from Google Cloud Console)
+2. Set redirect URI in Google Console: `http://localhost:3000/api/auth/callback`
 
-### What It Does
-
-1. Reads PDFs from `./pdf` directory
-2. Extracts text page-by-page
-3. Generates AI summaries for each page (using Claude)
-4. Creates embeddings for summaries and chunks
-5. Inserts page summaries into `page_with_meta` collection
-6. Splits text into chunks and inserts into `test` collection
-7. Tracks changes via MD5 hashing to avoid re-processing
-
-### Features
-
-- **Automatic chunking**: 1000 chars with 100 char overlap
-- **Page tracking**: Global page_id format: `{fileID}_page_{num}`
-- **AI Summaries**: Claude-generated (3 bullets + 2-4 sentences, 300-400 chars)
-- **Dual embeddings**: Separate vectors for chunks and summaries
-- **Deduplication**: MD5 hash-based change detection
-- **Auto-update**: Re-ingests modified PDFs automatically
-- **Sequential IDs**: Non-conflicting chunk_id generation
-
-## Ollama LLM Integration
-
-Run local LLMs with Ollama for document Q&A.
-
-### Prerequisites
-
-- Docker
-
-### Setup
-
-Follow the instructions in [`./ollama/README.md`](./ollama/README.md) to:
-1. Start Ollama service via Docker
-2. Download the model (e.g., `qwen2.5:3b`)
-3. Configure the Next.js app to use Ollama
-
-### Usage
-
-Once Ollama is running:
+### Step 6: Start Development Server
 
 ```bash
 npm run dev
 ```
 
-Chat with your documents through the web interface. The system:
-1. Queries Milvus for relevant chunks/pages
-2. Sends context + query to Ollama
-3. Streams the LLM response back
+Open [http://localhost:3000](http://localhost:3000)
 
-**Note**: Response times are currently 30-40 seconds depending on model and hardware.
+## Documentation Index
+
+Read in this order for full understanding:
+
+| # | Document | Description |
+|---|----------|-------------|
+| 1 | This README | Overview, setup, architecture |
+| 2 | [`scripts-milvus/README.md`](./scripts-milvus/README.md) | PDF ingestion, embeddings, models |
+| 3 | [`milvus/README.md`](./milvus/README.md) | Vector database schema, collections |
+| 4 | [`ollama/README.md`](./ollama/README.md) | Local LLM setup |
+
+## Production Deployment
+
+### Technical Details
+
+| Setting | Value |
+|---------|-------|
+| **Domain** | `chat-test.stuv-mannheim.de` |
+| **VM IP** | `10.32.39.247` |
+| **Container Port** | `80` |
+| **Reverse Proxy** | `chat-test.stuv-mannheim.de` -> `10.32.39.247:80` |
+
+### Environment Changes for Production
+
+```env
+# Production auth (Keycloak only)
+NEXT_PUBLIC_AUTH_PROVIDERS="keycloak"
+NEXT_PUBLIC_BASE_URL="https://chat-test.stuv-mannheim.de"
+
+# Keycloak redirect URI must be configured:
+# https://chat-test.stuv-mannheim.de/api/auth/keycloak/callback
+```
+
+### Docker Production Build
+
+```bash
+# Build production image
+docker build -t stuv-copilot .
+
+# Run on port 80
+docker run -d -p 80:3000 --env-file .env stuv-copilot
+```
 
 ## API Routes
 
-### Milvus Search API
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/auth/authorize` | GET | Start Google OAuth |
+| `/api/auth/callback` | GET | Google OAuth callback |
+| `/api/auth/check` | GET | Check Google auth status |
+| `/api/auth/keycloak/authorize` | GET | Start Keycloak OAuth |
+| `/api/auth/keycloak/callback` | GET | Keycloak OAuth callback |
+| `/api/auth/keycloak/check` | GET | Check Keycloak auth status |
+| `/api/claude` | POST | Chat with Claude API |
+| `/api/milvus` | POST | Vector search |
+| `/api/ollama` | POST | Chat with local Ollama |
 
-**Endpoint**: `/api/milvus`
+## Troubleshooting
 
-**Example:**
+### Milvus Connection Issues
 
-```javascript
-const response = await fetch('/api/milvus', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    action: 'search',
-    query: 'What is machine learning?',
-    limit: 5
-  })
-});
-
-const results = await response.json();
+```bash
+docker-compose ps                    # Check status
+docker logs milvus-standalone        # Check logs
+docker-compose restart standalone    # Restart
 ```
 
-## Development Notes
+### Authentication Issues
 
-This project uses:
-- [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to optimize [Geist](https://vercel.com/font) font
-- Milvus SDK (`@zilliz/milvus2-sdk-node`)
-- SentenceTransformers (`all-MiniLM-L6-v2`) for embeddings
-- Claude API for summary generation
+```bash
+# Check token files exist
+ls token.json           # Google
+ls keycloak-token.json  # Keycloak
+
+# Clear tokens to force re-auth
+rm token.json keycloak-token.json
+```
+
+### PDF Ingestion Issues
+
+```bash
+# Check Milvus is running
+curl http://localhost:9091/healthz
+
+# Check PDF folder path in .env
+echo $PDF_DIR
+```
 
 ## Known Issues & TODO
 
 ### Performance
+- [ ] Reduce response time with RAG-first architecture
+- [ ] Optimize vector search parameters
 
-- [ ] Reduce response time by implementing RAG-first architecture
-- [ ] Reduce response time with Agent-to-Agent (A2A) for efficient context extension
-- [ ] Optimize vector search parameters for faster retrieval
-
-### Features To Add
-
-- [ ] Multi-tenant support (different groups see different document sets)
-- [x] CLI tool for PDF uploads (`scripts-milvus/milvus-pdf.py`)
-- [ ] Web interface for PDF uploads (currently CLI only)
-- [ ] Hybrid search (pages → chunks)
-- [ ] Filtering by fileID or date range
-- [ ] Batch ingestion support
+### Features
+- [ ] Web interface for PDF uploads
+- [ ] Multi-tenant support (different groups see different documents)
 - [ ] Document deletion/update UI
 
-### Production Considerations
-
-- [ ] Change application type (from desktop-app to webapp)
-- [ ] Update MCP transport (from stdio to HTTP) depending on deployment architecture
-- [ ] Add authentication/authorization
+### Production
+- [x] Add Keycloak authentication
 - [ ] Implement rate limiting
 - [ ] Add monitoring and logging
 - [ ] Set up CI/CD pipeline
 
-## Architecture Diagram
-
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Next.js   │────▶│   Milvus     │────▶│  Ollama LLM │
-│   Frontend  │     │  (2 colls)   │     │   (Local)   │
-└─────────────┘     └──────────────┘     └─────────────┘
-      │                    │
-      │                    │
-      ▼                    ▼
-┌─────────────┐     ┌──────────────┐
-│  PDF Upload │     │   Sentence   │
-│   Pipeline  │────▶│  Transformer │
-└─────────────┘     │  (Embedding) │
-                    └──────────────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │    Claude    │
-                    │  (Summaries) │
-                    └──────────────┘
-```
-
-## Troubleshooting
-
-### Milvus connection issues
-
-```bash
-# Check if Milvus is healthy
-docker-compose ps
-
-# Check Milvus logs
-docker logs milvus-standalone
-
-# Restart Milvus
-docker-compose restart standalone
-```
-
-### Collections not found
-
-```bash
-# Rebuild collections from scratch
-docker-compose rm -f milvus-init
-docker-compose build milvus-init
-docker-compose up milvus-init
-```
-
-### Python dependencies
-
-```bash
-# If PDF ingestion fails, ensure all deps are installed
-pip install -r requirements.txt  # if you have one, or:
-pip install pymilvus langchain-text-splitters sentence-transformers PyPDF2 python-dotenv anthropic
-```
-
-## Learn More
-
-**Next.js:**
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Learn Next.js](https://nextjs.org/learn)
-
-**Milvus:**
-- [Milvus Documentation](https://milvus.io/docs)
-- [Milvus SDK Node.js](https://github.com/milvus-io/milvus-sdk-node)
-
-**Ollama:**
-- [Ollama Documentation](https://ollama.ai/docs)
-- [Ollama Models](https://ollama.ai/library)
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme).
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-**Note:** You'll need to deploy Milvus separately (e.g., Zilliz Cloud, AWS, GCP) and update connection settings.
-
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions welcome! Please open an issue or submit a pull request.
 
 ## License
 

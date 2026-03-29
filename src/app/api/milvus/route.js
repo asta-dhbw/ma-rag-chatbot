@@ -218,7 +218,20 @@ export async function GET(req) {
       ? PAGES_COLLECTION_NAME
       : CHUNKS_COLLECTION_NAME;
 
-    if (action === "stats") {
+    if (action === "files") {
+      // Get distinct filenames from the chunks collection
+      const { MilvusClient } = await import('@zilliz/milvus2-sdk-node');
+      const milvusClient = new MilvusClient({ address: `${process.env.MILVUS_HOST || 'localhost'}:${process.env.MILVUS_PORT || '19530'}` });
+      const results = await milvusClient.query({
+        collection_name: CHUNKS_COLLECTION_NAME,
+        expr: 'chunk_id >= 0',
+        output_fields: ['filename'],
+        limit: 16384,
+      });
+      const filenames = [...new Set((results.data || []).map(r => r.filename).filter(Boolean))].sort();
+      return NextResponse.json({ success: true, filenames });
+
+    } else if (action === "stats") {
       // Get collection statistics
       const stats = await getCollectionStats(collectionName);
 

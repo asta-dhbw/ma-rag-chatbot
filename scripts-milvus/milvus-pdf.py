@@ -1,4 +1,5 @@
 import os
+import sys
 import hashlib
 from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -6,6 +7,12 @@ from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 import anthropic
 from embeddings import get_embedding_provider
+
+# adjust encoding for windows (in case of Umlaute in filenames)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 load_dotenv()
 
 # Config from environment variables
@@ -14,7 +21,9 @@ MILVUS_PORT = os.environ["MILVUS_PORT"]
 CHUNKS_COLLECTION_NAME = os.environ.get("CHUNKS_COLLECTION_NAME", "test")
 PAGES_COLLECTION_NAME = os.environ.get("PAGES_COLLECTION_NAME", "page_with_meta")
 EMBEDDING_DIM = int(os.environ["EMBEDDING_DIM"])
-PDF_DIR = os.environ["PDF_DIR"]
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_DIR = os.environ.get("PDF_DIR", os.path.join(SCRIPT_DIR, "..", "pdf"))
+
 
 # Connect to DB
 connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
@@ -237,36 +246,38 @@ def insert_page_summaries(page_collection, pages_data, existing_page_ids, embedd
 
 def write_summary(pdf, timeout=90, max_length=550):
     """Generate a summary using Claude API with timeout and length protection."""
-    SYSTEMPROMPT = """You are a precise summarization assistant. Your task is to distill PDF page content into concise summaries.
+    SYSTEMPROMPT = """Du bist ein präziser Zusammenfassungsassistent. Deine Aufgabe ist es, den Inhalt von PDF-Seiten in knappe Zusammenfassungen zu destillieren.
 
-CRITICAL REQUIREMENTS:
-- Total length: MAXIMUM 500 characters (STRICT LIMIT - will be truncated if longer)
-- Extract exactly 3 short bullet points (5-10 words each)
-- Follow with a 2-3 sentence summary
-- Use clear, direct language without filler words
-- Focus on key insights only
+WICHTIGE ANFORDERUNGEN:
+- Gesamtlänge: MAXIMAL 500 Zeichen (STRIKTE GRENZE - wird bei Überschreitung gekürzt)
+- Genau 3 kurze Stichpunkte (je 5-10 Wörter)
+- Danach eine 2-3-Sätze-Zusammenfassung
+- Klare, direkte Sprache ohne Füllwörter
+- Nur die wichtigsten Informationen
+
+ANTWORTSPRACHE: Ausschließlich Deutsch.
 
 FORMAT:
-- Point 1
-- Point 2
-- Point 3
+- Punkt 1
+- Punkt 2
+- Punkt 3
 
-Summary: [2-3 sentences]
+Zusammenfassung: [2-3 Sätze]
 
-BE CONCISE. Every character counts."""
+SEI KNAPP. Jedes Zeichen zählt."""
 
     truncated_pdf = pdf[:10000] if len(pdf) > 10000 else pdf
 
     try:
         client = anthropic.Anthropic(timeout=timeout)
         message = client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=250,
             system=SYSTEMPROMPT,
             messages=[
                 {
                     "role": "user",
-                    "content": f"Summarize this PDF page (MAX 500 chars):\n\n{truncated_pdf}"
+                    "content": f"Fasse diese PDF-Seite zusammen (MAX 500 Zeichen, auf Deutsch):\n\n{truncated_pdf}"
                 }
             ],
         )

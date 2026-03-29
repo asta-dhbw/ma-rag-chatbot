@@ -20,8 +20,8 @@ export async function POST(req) {
     //   model: model || "qwen2.5:3b",
     // });
     const result = await orchestrateMilvusHybridSearch(conversationMessages, {
-      pageLimit: 2,   // Top 2 pages
-      chunkLimit: 5   // Top 5 chunks
+      pageLimit: 4,   // Top 4 pages
+      chunkLimit: 8   // Top 8 chunks
     });
 
     return NextResponse.json({

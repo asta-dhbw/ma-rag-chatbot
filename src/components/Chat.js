@@ -25,12 +25,18 @@ import {
 import MilvusResults from '@/components/milvus/MilvusResults';
 
 export default function ChatWindow() {
-  const [messages, setMessages] = useState([
-
-  ]);
+  const [messages, setMessages] = useState([]);
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
+  const [knowledgeFiles, setKnowledgeFiles] = useState([]);
   const viewportRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/milvus?action=files')
+      .then(r => r.json())
+      .then(d => { if (d.filenames) setKnowledgeFiles(d.filenames); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -107,7 +113,7 @@ export default function ChatWindow() {
                   StuV-Copilot
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Leben wieder schön machen
+                  V.0.1
                 </div>
               </div>
             </div>
@@ -127,6 +133,25 @@ export default function ChatWindow() {
             </div>
           </div>
           <Separator className="bg-muted/30" />
+
+          {/* Knowledge base files */}
+          {knowledgeFiles.length > 0 && (
+            <div className="px-4 py-2 border-b border-muted/20">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1.5">
+                Wissensdatenbank
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {knowledgeFiles.map(f => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded-md bg-[hsl(220,10%,12%)] px-2 py-0.5 text-[11px] text-muted-foreground border border-muted/20"
+                  >
+                    {f.replace(/\.pdf$/i, '')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Messages */}
           <CardContent className="p-0">
