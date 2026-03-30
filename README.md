@@ -1,6 +1,6 @@
 # StuV-Copilot
 
-AI-powered document Q&A chatbot for DHBW students. Built with Next.js, Milvus vector database, and Claude/Ollama LLMs.
+Document Q&A chatbot for DHBW students. Built with Next.js, Milvus vector database, and Claude/Ollama LLMs.
 
 ## Capabilities
 
