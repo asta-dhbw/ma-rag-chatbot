@@ -37,8 +37,17 @@ export async function GET(request) {
     const tokenPath = path.join(process.cwd(), "token.json");
     fs.writeFileSync(tokenPath, JSON.stringify(tokens));
 
-    // Redirect to chat page after successful authorization
-    return NextResponse.redirect(new URL('/chat', request.url));
+    // Redirect to chat page after successful authentication
+    const response = NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/chat`
+    );
+    response.cookies.set("keycloak_authenticated", "true", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: tokens.expires_in
+    });
+    return response;
   } catch (error) {
     console.error("OAuth callback error:", error);
     return NextResponse.json(
