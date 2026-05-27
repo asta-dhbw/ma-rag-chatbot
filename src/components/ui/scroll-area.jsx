@@ -18,7 +18,13 @@ const ScrollArea = React.forwardRef(function ScrollArea(
       <ScrollAreaPrimitive.Viewport
         ref={viewportRef}
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        className={cn(
+          'focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1',
+          // Radix wraps children in a <div style="display:table;min-width:100%">
+          // which lets content dictate width and breaks truncation in flex children.
+          // Force the wrapper back to a regular block so min-w-0 / truncate work.
+          '[&>div]:!block [&>div]:!min-w-0 [&>div]:w-full'
+        )}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

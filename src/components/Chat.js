@@ -100,9 +100,9 @@ export default function ChatWindow() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="mx-auto w-full max-w-3xl px-2 sm:px-4">
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-2 sm:px-4 min-h-0">
         {/* Shell */}
-        <Card className="border-muted/40 bg-[hsl(220,10%,6%)] text-muted-foreground shadow-[0_0_0_1px_hsl(220,10%,12%)]">
+        <Card className="flex h-full min-h-0 flex-col gap-0 py-0 overflow-hidden border-muted/40 bg-[hsl(220,10%,6%)] text-muted-foreground shadow-[0_0_0_1px_hsl(220,10%,12%)]">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
               <div className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary">
@@ -154,9 +154,9 @@ export default function ChatWindow() {
           )}
 
           {/* Messages */}
-          <CardContent className="p-0">
+          <CardContent className="flex-1 min-h-0 p-0">
             <ScrollArea
-              className="h-[52vh] sm:h-[60vh]"
+              className="h-full"
               viewportRef={viewportRef}
             >
               <div className="space-y-4 px-4 py-4">
@@ -267,7 +267,7 @@ function MessageBubble({ role, message, children }) {
   return (
     <div
       className={cn(
-        'flex w-full items-start gap-3',
+        'flex w-full min-w-0 items-start gap-3',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
@@ -279,7 +279,9 @@ function MessageBubble({ role, message, children }) {
       <div
         className={cn(
           'rounded-2xl text-sm leading-relaxed shadow',
-          hasStructuredData ? 'max-w-[95%] p-0' : 'max-w-[82%] px-3.5 py-2',
+          hasStructuredData
+            ? 'min-w-0 flex-1 p-0'
+            : 'max-w-[82%] px-3.5 py-2',
           isUser
             ? 'bg-[hsl(217,90%,56%)] text-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)]'
             : hasStructuredData

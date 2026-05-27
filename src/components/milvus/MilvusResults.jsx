@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
 import {
   Collapsible,
   CollapsibleContent,
@@ -29,7 +27,7 @@ export default function MilvusResults({ results }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="w-full min-w-0 space-y-2">
       {/* Results count header */}
       <div className="text-xs text-muted-foreground">
         Found {results.length} result{results.length !== 1 ? 's' : ''}
@@ -60,84 +58,107 @@ function ResultItem({ result, index }) {
     return 'text-orange-400';
   };
 
+  // Extract a clean page label. local_page_num is sometimes the full id
+  // (e.g. "Infos_Studium_DataScience_DHBW_page_1") - reduce it to just the number.
+  const extractPageNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value);
+    const match = str.match(/page[_-]?(\d+)/i);
+    if (match) return match[1];
+    if (/^\d+$/.test(str)) return str;
+    return str;
+  };
+
+  const pageLabel =
+    extractPageNumber(metadata.page) ??
+    extractPageNumber(metadata.local_page_num);
+
+  const displayName = metadata.filename || metadata.file_id || 'Unknown';
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card className="border-muted/30 bg-[hsl(220,10%,10%)] shadow-sm">
+      <div className="w-full min-w-0 overflow-hidden rounded-lg border border-muted/30 bg-[hsl(220,10%,10%)] shadow-sm">
         <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer px-4 py-3 hover:bg-[hsl(220,10%,12%)] transition-colors">
-            <div className="flex items-center justify-between gap-3">
-              {/* Left side: Icon + Metadata */}
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                {/* Expand/collapse icon */}
-                <div className="text-muted-foreground">
-                  {isOpen ? (
-                    <ChevronDown className="h-4 w-4" />
+          <button
+            type="button"
+            className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[hsl(220,10%,12%)] transition-colors"
+          >
+            {/* Left side: Icon + Metadata */}
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+              {/* Expand/collapse icon */}
+              <div className="shrink-0 text-muted-foreground">
+                {isOpen ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </div>
+
+              {/* Similarity Score */}
+              <div
+                className={cn(
+                  'shrink-0 text-sm font-semibold tabular-nums',
+                  getScoreColor(score)
+                )}
+              >
+                {score}%
+              </div>
+
+              {/* File & Page Info */}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <div className="shrink-0 text-muted-foreground">
+                  {isChunk ? (
+                    <FileText className="h-4 w-4" />
                   ) : (
-                    <ChevronRight className="h-4 w-4" />
+                    <File className="h-4 w-4" />
                   )}
                 </div>
-
-                {/* Similarity Score */}
-                <div className={cn('text-sm font-semibold tabular-nums', getScoreColor(score))}>
-                  {score}%
+                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <span className="truncate">{displayName}</span>
+                  {pageLabel && (
+                    <span className="text-muted-foreground/70">
+                      {' · '}S. {pageLabel}
+                    </span>
+                  )}
                 </div>
-
-                {/* File & Page Info */}
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="text-muted-foreground">
-                    {isChunk ? (
-                      <FileText className="h-4 w-4" />
-                    ) : (
-                      <File className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {metadata.filename || metadata.file_id || 'Unknown'}
-                    {metadata.page && ` · Page ${metadata.page}`}
-                    {metadata.local_page_num && ` · Page ${metadata.local_page_num}`}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right side: Badges */}
-              <div className="flex items-center gap-2">
-                {metadata.location && (
-                  <Badge
-                    variant="secondary"
-                    className="hidden sm:inline-flex bg-[hsl(220,10%,14%)] text-[11px] text-muted-foreground"
-                  >
-                    {metadata.location}
-                  </Badge>
-                )}
-                <Badge
-                  variant="outline"
-                  className="border-muted/40 text-[11px]"
-                >
-                  {isChunk ? 'Chunk' : 'Page'}
-                </Badge>
               </div>
             </div>
-          </CardHeader>
+
+            {/* Right side: Badges */}
+            <div className="flex shrink-0 items-center gap-2">
+              {metadata.location && (
+                <Badge
+                  variant="secondary"
+                  className="hidden sm:inline-flex bg-[hsl(220,10%,14%)] text-[11px] text-muted-foreground"
+                >
+                  {metadata.location}
+                </Badge>
+              )}
+              <Badge
+                variant="outline"
+                className="border-muted/40 text-[11px]"
+              >
+                {isChunk ? 'Chunk' : 'Page'}
+              </Badge>
+            </div>
+          </button>
         </CollapsibleTrigger>
 
         <CollapsibleContent>
           <Separator className="bg-muted/30" />
-          <CardContent className="px-4 py-3 space-y-3">
+          <div className="space-y-3 px-4 py-3">
             {/* Metadata Section */}
             <div className="space-y-1.5">
               <div className="text-xs font-medium text-white">Metadata</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+              <div className="grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
                 {metadata.filename && (
                   <MetadataItem label="Filename" value={metadata.filename} />
                 )}
                 {metadata.file_id && (
                   <MetadataItem label="File ID" value={metadata.file_id} />
                 )}
-                {(metadata.page || metadata.local_page_num) && (
-                  <MetadataItem
-                    label="Page"
-                    value={metadata.page || metadata.local_page_num}
-                  />
+                {pageLabel && (
+                  <MetadataItem label="Page" value={pageLabel} />
                 )}
                 {metadata.location && (
                   <MetadataItem label="Location" value={metadata.location} />
@@ -162,9 +183,9 @@ function ResultItem({ result, index }) {
                 {result.content || 'No content available'}
               </div>
             </div>
-          </CardContent>
+          </div>
         </CollapsibleContent>
-      </Card>
+      </div>
     </Collapsible>
   );
 }
@@ -174,8 +195,9 @@ function ResultItem({ result, index }) {
  */
 function MetadataItem({ label, value }) {
   return (
-    <div className="text-muted-foreground">
-      <span className="text-white/70">{label}:</span> {value}
+    <div className="min-w-0 text-muted-foreground">
+      <span className="text-white/70">{label}:</span>{' '}
+      <span className="break-all">{value}</span>
     </div>
   );
 }

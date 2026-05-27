@@ -21,7 +21,7 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[hsl(220,10%,6%)] py-10">
+    <main className="flex h-screen flex-col items-center justify-center overflow-hidden bg-[hsl(220,10%,6%)] py-4 sm:py-6">
       <ChatWindow />
     </main>
   );
