@@ -5,7 +5,8 @@ export class OpenAIEmbeddingProvider extends EmbeddingProvider {
   constructor() {
     super();
     this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.EMBEDDING_BASE_URL || process.env.OPENAI_BASE_URL,
     });
     this.model = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
     this.dimension = parseInt(process.env.EMBEDDING_DIM || '1536', 10);
@@ -17,6 +18,7 @@ export class OpenAIEmbeddingProvider extends EmbeddingProvider {
     const response = await this.client.embeddings.create({
       model: this.model,
       input: text,
+      encoding_format: 'float',
     });
     return response.data[0].embedding;
   }
@@ -31,6 +33,7 @@ export class OpenAIEmbeddingProvider extends EmbeddingProvider {
       const response = await this.client.embeddings.create({
         model: this.model,
         input: batch,
+        encoding_format: 'float',
       });
 
       const embeddings = response.data.map(item => item.embedding);

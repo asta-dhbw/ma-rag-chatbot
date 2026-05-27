@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export function middleware(request) {
+export function proxy(request) {
   const cookie = request.cookies.get("keycloak_authenticated");
   const { pathname } = request.nextUrl;
 

@@ -3,8 +3,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getGDriveMCPTools, callGDriveMCPTool } from "@/lib/mcp-client-gdrive";
 
 const anthropic = new Anthropic({
-  apiKey: process.env.LONGCAT_API_KEY,
+  apiKey: process.env.LLM_API_KEY || process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY,
+  baseURL: process.env.LLM_BASE_URL || process.env.ANTHROPIC_BASE_URL,
 });
+
+const LLM_MODEL = process.env.LLM_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
 
 export async function POST(request) {
   try {
@@ -15,7 +18,7 @@ export async function POST(request) {
 
     // Call Claude with tools
     let response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model: LLM_MODEL,
       max_tokens: 1024,
       tools: tools,
       messages: messages,
@@ -30,7 +33,7 @@ export async function POST(request) {
 
       // Continue conversation with tool result
       response = await anthropic.messages.create({
-        model: "claude-sonnet-4-5-20250929",
+        model: LLM_MODEL,
         max_tokens: 1024,
         tools: tools,
         messages: [

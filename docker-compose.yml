@@ -89,7 +89,7 @@ services:
       - MILVUS_PORT=19530
       - CHUNKS_COLLECTION_NAME=test
       - PAGES_COLLECTION_NAME=page_with_meta
-      - EMBEDDING_DIM=1536
+      - EMBEDDING_DIM=${EMBEDDING_DIM:?Set EMBEDDING_DIM in .env}
     depends_on:
       standalone:
         condition: service_healthy

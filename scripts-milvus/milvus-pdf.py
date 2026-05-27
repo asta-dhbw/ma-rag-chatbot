@@ -269,9 +269,13 @@ SEI KNAPP. Jedes Zeichen zählt."""
     truncated_pdf = pdf[:10000] if len(pdf) > 10000 else pdf
 
     try:
-        client = anthropic.Anthropic(timeout=timeout)
+        client = anthropic.Anthropic(
+            api_key=os.getenv("LLM_API_KEY") or os.getenv("LONGCAT_API_KEY") or os.getenv("ANTHROPIC_API_KEY"),
+            base_url=os.getenv("LLM_BASE_URL") or os.getenv("ANTHROPIC_BASE_URL"),
+            timeout=timeout
+        )
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=os.getenv("LLM_MODEL") or os.getenv("ANTHROPIC_MODEL") or "claude-haiku-4-5-20251001",
             max_tokens=250,
             system=SYSTEMPROMPT,
             messages=[

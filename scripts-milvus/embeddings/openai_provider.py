@@ -9,7 +9,10 @@ from typing import List
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     def __init__(self):
-        self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.client = openai.OpenAI(
+            api_key=os.getenv('EMBEDDING_API_KEY') or os.getenv('OPENAI_API_KEY'),
+            base_url=os.getenv('EMBEDDING_BASE_URL') or os.getenv('OPENAI_BASE_URL')
+        )
         self.model = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
         self.dimension = int(os.getenv('EMBEDDING_DIM', '1536'))
 
