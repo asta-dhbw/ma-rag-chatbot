@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
-import { orchestrateLLMConversation } from "@/lib/llm-orchestration";
 import { orchestrateMilvusHybridSearch } from "@/lib/milvus-orchestration";
 
+/**
+ * Legacy chat endpoint.
+ *
+ * As of the per-user LLM key feature, the LLM is called directly from the
+ * browser (see `src/lib/browser-llm.js`). The user's API key never reaches
+ * this server. This endpoint therefore only does retrieval and exists so
+ * that older clients (and anyone hitting it without a key) still get useful
+ * vector-search results back.
+ *
+ * Prefer using `/api/milvus` (action `searchText`) for new code.
+ */
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { model, prompt, messages } = body;
+    const { prompt, messages } = body;
 
-    // Format messages
     const conversationMessages = messages || [
       {
         role: "user",
@@ -15,35 +24,28 @@ export async function POST(req) {
       },
     ];
 
-    // Orchestrate the conversation with tool calling support
-    // const result = await orchestrateLLMConversation(conversationMessages, {
-    //   model: model || "qwen2.5:3b",
-    // });
     const result = await orchestrateMilvusHybridSearch(conversationMessages, {
-      pageLimit: 4,   // Top 4 pages
-      chunkLimit: 8   // Top 8 chunks
+      pageLimit: 4,
+      chunkLimit: 8,
     });
 
     return NextResponse.json({
-      content: [
-        {
-          text: result.content,
-        },
-      ],
+      content: [{ text: result.content || "" }],
       structured: result.structured || null,
-      responseType: result.structured ? 'structured' : 'text',
+      responseType: result.structured ? "structured" : "text",
       model: result.model,
       usage: result.usage,
     });
   } catch (error) {
-    console.error("Error in LLM orchestration:", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    console.error("Error in /api/ollama:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
+/**
+ * Kept for backwards-compat: this used to probe the local Ollama instance.
+ * It is no longer wired into the UI but harmless to keep around.
+ */
 export async function GET() {
   try {
     const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
