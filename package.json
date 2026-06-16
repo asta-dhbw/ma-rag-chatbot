@@ -28,7 +28,7 @@
     "@zilliz/milvus2-sdk-node": "^2.6.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "googleapis": "^163.0.0",
+    "googleapis": "^170.1.0",
     "lucide-react": "^0.546.0",
     "next": "^16.0.10",
     "openai": "^6.16.0",
