@@ -43,7 +43,11 @@ function buildCsp(nonce) {
   const scriptSrc = isDev
     ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' 'unsafe-eval'`
     : `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline'`;
-  const connectSrc = isDev ? "'self' ws: wss:" : "'self'";
+  // NOTE: connect-src must allow external HTTPS because the browser-side
+  // LLM client (src/lib/browser-llm.js) calls the user's configured LLM
+  // provider (e.g. api.anthropic.com or a custom baseURL) directly from
+  // the browser. With plain 'self' those fetches would be blocked by CSP.
+  const connectSrc = isDev ? "'self' https: ws: wss:" : "'self' https:";
 
   const directives = [
     "default-src 'self'",
