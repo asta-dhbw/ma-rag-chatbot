@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { setAuthCookie } from "@/lib/auth-cookie";
 
 // Keycloak OIDC configuration from environment variables
 const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID;
@@ -72,10 +73,13 @@ export async function GET(request) {
 
     console.log("Keycloak tokens saved successfully");
 
-    // Redirect to chat page after successful authentication
-    return NextResponse.redirect(
+    // Set the auth cookie that the middleware checks. Was previously missing
+    // here (only the Google callback set it), which broke Keycloak login.
+    const response = NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/chat`
     );
+    setAuthCookie(response, tokens.expires_in);
+    return response;
   } catch (error) {
     console.error("Keycloak callback error:", error);
     return NextResponse.json(
