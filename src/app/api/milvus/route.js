@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   createCollectionWithIndex,
   ingestData,
@@ -10,53 +11,113 @@ import {
   VECTOR_DIM,
 } from "@/lib/milvus-handler";
 import { generateEmbedding } from "@/lib/embeddings";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
-/**
- * POST endpoint for Milvus operations
- * Supports: search, searchText, ingest, createCollection
- */
+const isProd = process.env.NODE_ENV === "production";
+
+// Per-IP rate limits. Tune via env if needed.
+const SEARCH_LIMIT = Number(process.env.MILVUS_SEARCH_RATE_LIMIT || 30);
+const SEARCH_WINDOW_MS = Number(process.env.MILVUS_SEARCH_RATE_WINDOW_MS || 60_000);
+const WRITE_LIMIT = Number(process.env.MILVUS_WRITE_RATE_LIMIT || 5);
+const WRITE_WINDOW_MS = Number(process.env.MILVUS_WRITE_RATE_WINDOW_MS || 60_000);
+
+const collectionEnum = z.enum(["chunks", "pages"]).optional();
+
+const searchTextSchema = z.object({
+  action: z.literal("searchText"),
+  query: z.string().min(1).max(2000),
+  collection: collectionEnum,
+  limit: z.number().int().min(1).max(50).optional(),
+  outputFields: z.array(z.string()).optional(),
+});
+
+const searchSchema = z.object({
+  action: z.literal("search"),
+  queryVector: z.array(z.number()).length(VECTOR_DIM),
+  collection: collectionEnum,
+  limit: z.number().int().min(1).max(50).optional(),
+  outputFields: z.array(z.string()).optional(),
+});
+
+const ingestSchema = z.object({
+  action: z.literal("ingest"),
+  data: z.array(z.record(z.string(), z.unknown())).min(1).max(1000),
+  collection: collectionEnum,
+});
+
+const createCollectionSchema = z.object({
+  action: z.literal("createCollection"),
+  collectionType: z.enum(["chunks", "pages"]),
+  dropIfExists: z.boolean().optional(),
+});
+
+const bodySchema = z.discriminatedUnion("action", [
+  searchTextSchema,
+  searchSchema,
+  ingestSchema,
+  createCollectionSchema,
+]);
+
+const READ_ACTIONS = new Set(["searchText", "search"]);
+
+// Map a thrown error to a JSON response. In production we hide internals.
+function errorResponse(error, status = 500) {
+  console.error("Milvus API error:", error);
+  return NextResponse.json(
+    {
+      success: false,
+      error: isProd ? "Internal server error" : (error?.message || "error"),
+    },
+    { status }
+  );
+}
+
 export async function POST(req) {
+  let body;
   try {
-    const body = await req.json();
-    const { action, ...params } = body;
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-    if (!action) {
-      return NextResponse.json(
-        { error: "Action parameter is required" },
-        { status: 400 }
-      );
-    }
+  const parsed = bodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid request body", details: parsed.error.issues },
+      { status: 400 }
+    );
+  }
+  const params = parsed.data;
 
-    let result;
+  // Rate limit: reads vs writes use separate buckets.
+  const ip = clientIp(req);
+  const isRead = READ_ACTIONS.has(params.action);
+  const rl = rateLimit(
+    `milvus:${isRead ? "read" : "write"}:${ip}`,
+    isRead ? SEARCH_LIMIT : WRITE_LIMIT,
+    isRead ? SEARCH_WINDOW_MS : WRITE_WINDOW_MS
+  );
+  if (!rl.ok) {
+    const retryAfter = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000));
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
 
-    switch (action) {
-      case "searchText":
-        // Search using text query (automatically generates embedding)
-        // Required: query (string)
-        // Optional: limit (default: 5), collection ('chunks' or 'pages'), outputFields
-        if (!params.query || typeof params.query !== 'string') {
-          return NextResponse.json(
-            { error: "query (string) is required for searchText action" },
-            { status: 400 }
-          );
-        }
-
-        console.log(`Generating embedding for query: "${params.query}"`);
+  try {
+    switch (params.action) {
+      case "searchText": {
         const queryEmbedding = await generateEmbedding(params.query);
+        const collectionType = params.collection || "chunks";
+        const collectionName =
+          collectionType === "pages" ? PAGES_COLLECTION_NAME : CHUNKS_COLLECTION_NAME;
+        const defaultOutputFields =
+          collectionType === "pages"
+            ? ["page_id", "file_id", "local_page_num", "summary"]
+            : ["fileID", "filename", "page", "chunk_index", "chunk_text", "summary", "location"];
 
-        // Determine which collection to search
-        const collectionType = params.collection || 'chunks';
-        const collectionName = collectionType === 'pages'
-          ? PAGES_COLLECTION_NAME
-          : CHUNKS_COLLECTION_NAME;
-
-        // Determine output fields based on collection
-        const defaultOutputFields = collectionType === 'pages'
-          ? ['page_id', 'file_id', 'local_page_num', 'summary']
-          : ['fileID', 'filename', 'page', 'chunk_index', 'chunk_text', 'summary', 'location'];
-
-        console.log(`Searching in ${collectionName} collection...`);
-        result = await search(
+        const result = await search(
           queryEmbedding,
           collectionName,
           params.limit || 5,
@@ -71,42 +132,16 @@ export async function POST(req) {
           results: result.results || [],
           status: result.status,
         });
+      }
 
-      case "search":
-        // Search for similar vectors (direct vector input)
-        // Required: queryVector (array of numbers with length VECTOR_DIM)
-        // Optional: limit (default: 5), collection, outputFields
-        if (!params.queryVector) {
-          return NextResponse.json(
-            { error: "queryVector is required for search action" },
-            { status: 400 }
-          );
-        }
+      case "search": {
+        const collectionType = params.collection || "chunks";
+        const collectionName =
+          collectionType === "pages" ? PAGES_COLLECTION_NAME : CHUNKS_COLLECTION_NAME;
 
-        if (!Array.isArray(params.queryVector)) {
-          return NextResponse.json(
-            { error: "queryVector must be an array" },
-            { status: 400 }
-          );
-        }
-
-        if (params.queryVector.length !== VECTOR_DIM) {
-          return NextResponse.json(
-            {
-              error: `queryVector must have length ${VECTOR_DIM}, got ${params.queryVector.length}`,
-            },
-            { status: 400 }
-          );
-        }
-
-        const searchCollectionType = params.collection || 'chunks';
-        const searchCollectionName = searchCollectionType === 'pages'
-          ? PAGES_COLLECTION_NAME
-          : CHUNKS_COLLECTION_NAME;
-
-        result = await search(
+        const result = await search(
           params.queryVector,
-          searchCollectionName,
+          collectionName,
           params.limit || 5,
           params.outputFields
         );
@@ -114,164 +149,124 @@ export async function POST(req) {
         return NextResponse.json({
           success: true,
           action: "search",
-          collection: searchCollectionName,
+          collection: collectionName,
           results: result.results || [],
           status: result.status,
         });
+      }
 
-      case "ingest":
-        // Ingest data into collection
-        // Required: data (array of objects matching schema)
-        // Optional: collection ('chunks' or 'pages')
-        if (!params.data || !Array.isArray(params.data)) {
-          return NextResponse.json(
-            { error: "data array is required for ingest action" },
-            { status: 400 }
-          );
-        }
+      case "ingest": {
+        const collectionType = params.collection || "chunks";
+        const collectionName =
+          collectionType === "pages" ? PAGES_COLLECTION_NAME : CHUNKS_COLLECTION_NAME;
 
-        if (params.data.length === 0) {
-          return NextResponse.json(
-            { error: "data array cannot be empty" },
-            { status: 400 }
-          );
-        }
-
-        const ingestCollectionType = params.collection || 'chunks';
-        const ingestCollectionName = ingestCollectionType === 'pages'
-          ? PAGES_COLLECTION_NAME
-          : CHUNKS_COLLECTION_NAME;
-
-        result = await ingestData(
-          params.data,
-          ingestCollectionName
-        );
+        const result = await ingestData(params.data, collectionName);
 
         return NextResponse.json({
           success: true,
           action: "ingest",
-          collection: ingestCollectionName,
+          collection: collectionName,
           insertCount: result.insertCount,
           message: result.message,
         });
+      }
 
-      case "createCollection":
-        // Create a new collection with index
-        // Required: collectionType ('chunks' or 'pages')
-        // Optional: dropIfExists (default: false)
-        const createCollectionType = params.collectionType || 'chunks';
-        const config = COLLECTION_CONFIGS[createCollectionType];
-
+      case "createCollection": {
+        const config = COLLECTION_CONFIGS[params.collectionType];
         if (!config) {
           return NextResponse.json(
-            { error: `Invalid collectionType: ${createCollectionType}. Must be 'chunks' or 'pages'` },
+            { error: `Invalid collectionType: ${params.collectionType}` },
             { status: 400 }
           );
         }
-
-        result = await createCollectionWithIndex(
+        const result = await createCollectionWithIndex(
           config.name,
           config.schema,
           config.indexConfig,
           config.description,
           params.dropIfExists || false
         );
-
         return NextResponse.json({
           success: true,
           action: "createCollection",
           collection: config.name,
           message: result.message,
         });
-
-      default:
-        return NextResponse.json(
-          {
-            error: `Unknown action: ${action}. Supported actions: searchText, search, ingest, createCollection`,
-          },
-          { status: 400 }
-        );
+      }
     }
   } catch (error) {
-    console.error("Error in Milvus API:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Internal server error",
-        details: error.toString(),
-      },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }
 
-/**
- * GET endpoint for Milvus status and collection information
- */
 export async function GET(req) {
+  // Light rate-limit on GETs too.
+  const ip = clientIp(req);
+  const rl = rateLimit(`milvus:read:${ip}`, SEARCH_LIMIT, SEARCH_WINDOW_MS);
+  if (!rl.ok) {
+    const retryAfter = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000));
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const collectionType = searchParams.get("collection") || "chunks";
     const action = searchParams.get("action") || "stats";
 
-    const collectionName = collectionType === 'pages'
-      ? PAGES_COLLECTION_NAME
-      : CHUNKS_COLLECTION_NAME;
+    if (collectionType !== "chunks" && collectionType !== "pages") {
+      return NextResponse.json({ error: "Invalid collection" }, { status: 400 });
+    }
+
+    const collectionName =
+      collectionType === "pages" ? PAGES_COLLECTION_NAME : CHUNKS_COLLECTION_NAME;
 
     if (action === "files") {
-      // Get distinct filenames from the chunks collection
-      const { MilvusClient } = await import('@zilliz/milvus2-sdk-node');
-      const milvusClient = new MilvusClient({ address: `${process.env.MILVUS_HOST || 'localhost'}:${process.env.MILVUS_PORT || '19530'}` });
+      const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
+      const milvusClient = new MilvusClient({
+        address: `${process.env.MILVUS_HOST || "localhost"}:${process.env.MILVUS_PORT || "19530"}`,
+      });
       const results = await milvusClient.query({
         collection_name: CHUNKS_COLLECTION_NAME,
-        expr: 'chunk_id >= 0',
-        output_fields: ['filename'],
+        expr: "chunk_id >= 0",
+        output_fields: ["filename"],
         limit: 16384,
       });
-      const filenames = [...new Set((results.data || []).map(r => r.filename).filter(Boolean))].sort();
+      const filenames = [
+        ...new Set((results.data || []).map((r) => r.filename).filter(Boolean)),
+      ].sort();
       return NextResponse.json({ success: true, filenames });
+    }
 
-    } else if (action === "stats") {
-      // Get collection statistics
+    if (action === "stats") {
       const stats = await getCollectionStats(collectionName);
-
       return NextResponse.json({
         success: true,
         collection: collectionName,
-        collectionType: collectionType,
-        stats: stats,
+        collectionType,
+        stats,
         vectorDimension: VECTOR_DIM,
       });
-    } else if (action === "config") {
-      // Return configuration information
+    }
+
+    if (action === "config") {
       return NextResponse.json({
         success: true,
         config: {
-          collections: {
-            chunks: CHUNKS_COLLECTION_NAME,
-            pages: PAGES_COLLECTION_NAME,
-          },
+          collections: { chunks: CHUNKS_COLLECTION_NAME, pages: PAGES_COLLECTION_NAME },
           vectorDimension: VECTOR_DIM,
           supportedActions: ["searchText", "search", "ingest", "createCollection"],
         },
       });
-    } else {
-      return NextResponse.json(
-        {
-          error: `Unknown action: ${action}. Supported actions: stats, config`,
-        },
-        { status: 400 }
-      );
     }
-  } catch (error) {
-    console.error("Error in Milvus GET API:", error);
+
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Internal server error",
-        details: error.toString(),
-      },
-      { status: 500 }
+      { error: `Unknown action: ${action}` },
+      { status: 400 }
     );
+  } catch (error) {
+    return errorResponse(error);
   }
 }

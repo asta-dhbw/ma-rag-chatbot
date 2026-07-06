@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
+import { setAuthCookie } from "@/lib/auth-cookie";
 
 export async function GET(request) {
   try {
@@ -41,12 +42,7 @@ export async function GET(request) {
     const response = NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/chat`
     );
-    response.cookies.set("keycloak_authenticated", "true", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: tokens.expires_in
-    });
+    setAuthCookie(response, tokens.expires_in);
     return response;
   } catch (error) {
     console.error("OAuth callback error:", error);

@@ -160,7 +160,47 @@ EMBEDDING_DIM=1536
 # =============================================================================
 PDF_DIR="C:\\path\\to\\project\\pdf"
 LOCAL_FILE_PATH="C:\\path\\to\\project\\data"
+
+# =============================================================================
+# SECURITY (proxy + API)
+# =============================================================================
+# Comma-separated list of additional origins allowed to call mutating /api/**
+# endpoints. The app's own origin (NEXT_PUBLIC_BASE_URL) is always allowed.
+# Leave empty unless you serve the frontend from a different origin.
+ALLOWED_ORIGINS=""
+
+# Per-IP rate limits for the Milvus API. Reads and writes are tracked
+# separately. Values are requests per window; windows are in milliseconds.
+# Defaults shown below.
+MILVUS_SEARCH_RATE_LIMIT=30
+MILVUS_SEARCH_RATE_WINDOW_MS=60000
+MILVUS_WRITE_RATE_LIMIT=5
+MILVUS_WRITE_RATE_WINDOW_MS=60000
 ```
+
+### Security Notes
+
+- **Security headers**: `X-Frame-Options: DENY`, `Referrer-Policy`,
+  `Permissions-Policy`, `X-Content-Type-Options`, and HSTS (prod only)
+  are set globally in `next.config.mjs`.
+- **Content-Security-Policy** is set per-request in `src/proxy.js` with
+  a fresh nonce per response. Production CSP uses `script-src 'self'
+  'nonce-…' 'strict-dynamic'` (no `unsafe-inline` for scripts in modern
+  browsers).
+- **CSRF protection**: the proxy rejects mutating cross-origin requests
+  to `/api/**` based on the `Origin`/`Referer` header. Add trusted extra
+  origins via `ALLOWED_ORIGINS`.
+- **Public paths** are explicitly allow-listed in `src/proxy.js`
+  (`PUBLIC_EXACT_PATHS`). New routes under `/api/auth/**` are
+  authenticated by default and must be added there to be public.
+- **Rate limiting**: an in-memory per-IP limiter (`src/lib/rate-limit.js`)
+  protects the Milvus endpoints. It is per-process – behind PM2 cluster
+  mode the effective limit is `limit × workers`. For real production
+  scale put a WAF or Redis-backed limiter in front.
+- **Auth cookie**: `keycloak_authenticated` is a session flag set by the
+  OAuth callbacks via `src/lib/auth-cookie.js`. It is `httpOnly`,
+  `sameSite=lax`, `path=/`, and `secure` only when `NODE_ENV=production`
+  so local HTTP dev keeps working.
 
 ### Step 3: Start Docker Services
 
